@@ -91,7 +91,7 @@ The current notebook deliberately stops before the following extensions:
    ```
 3. Open the notebook:
    ```bash
-   jupyter notebook Factor_Momentum_Arnott2020_submission.ipynb
+   jupyter notebook Factor_Momentum_v1.ipynb
    ```
 4. In the notebook, choose either:
    - `DATA_SOURCE = "hdf"` and provide your original HDF path, or
