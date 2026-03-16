@@ -76,7 +76,7 @@ The current notebook deliberately stops before the following extensions:
 ## Repository structure
 ```text
 .
-├── Factor_Momentum_Arnott2020_submission.ipynb
+├── Factor_Momentum_v1.ipynb
 ├── README.md
 ├── requirements.txt
 ├── .gitignore
@@ -94,7 +94,7 @@ The current notebook deliberately stops before the following extensions:
    jupyter notebook Factor_Momentum_v1.ipynb
    ```
 4. In the notebook, choose either:
-   - `DATA_SOURCE = "hdf"` and provide your original HDF path, or
+   - `DATA_SOURCE = "hdf"`, or
    - `DATA_SOURCE = "yahoo"` for the public-data version.
 
 ## Reference papers
