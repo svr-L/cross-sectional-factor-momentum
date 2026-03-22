@@ -105,8 +105,8 @@ The evidence is therefore more consistent with a **theory-to-implementation gap*
 
 ## Current conclusions
 
-* **Realized sample:** `MomTop1\_80\_20` remains the strongest specification.
-* **Net-of-costs realized sample:** both AR and CS still leave `MomTop1\_80\_20` ahead of EW.
+* **Realized sample:** `MomTop1\\\_80\\\_20` remains the strongest specification.
+* **Net-of-costs realized sample:** both AR and CS still leave `MomTop1\\\_80\\\_20` ahead of EW.
 * **Bootstrap robustness:** once dependence-aware resampling and proxy trading frictions are accounted for, the strategy's advantage weakens materially.
 * **Estimator sensitivity:** AR is somewhat more punitive than CS, but both estimators imply the same broad conclusion.
 
@@ -120,7 +120,7 @@ The current notebook already includes proxy transaction costs and historical ris
 
 ```text
 .
-├── Factors\_Momentum.ipynb
+├── Factor\_Momentum.ipynb
 ├── README.md
 ├── requirements.txt
 ├── .gitignore
@@ -139,17 +139,17 @@ The current notebook already includes proxy transaction costs and historical ris
 3. Open the notebook:
 
 ```bash
-   jupyter notebook Factors\_Momentum.ipynb
+   jupyter notebook Factor\_Momentum.ipynb
    ```
 
 4. In the notebook, choose either:
 
-   * `DATA\_SOURCE = "hdf"`, or
-   * `DATA\_SOURCE = "yahoo"` for the public-data version.
+   * `DATA\\\_SOURCE = "hdf"`, or
+   * `DATA\\\_SOURCE = "yahoo"` for the public-data version.
 5. Choose the risk-free proxy:
 
-   * `RF\_SOURCE = "DGS3MO"` (default), or
-   * `RF\_SOURCE = "SOFR"`.
+   * `RF\\\_SOURCE = "DGS3MO"` (default), or
+   * `RF\\\_SOURCE = "SOFR"`.
 
 ## References
 
