@@ -105,8 +105,8 @@ The evidence is therefore more consistent with a **theory-to-implementation gap*
 
 ## Current conclusions
 
-* **Realized sample:** `MomTop1\\\_80\\\_20` remains the strongest specification.
-* **Net-of-costs realized sample:** both AR and CS still leave `MomTop1\\\_80\\\_20` ahead of EW.
+* **Realized sample:** `MomTop1_80_20` remains the strongest specification.
+* **Net-of-costs realized sample:** both AR and CS still leave `MomTop1_80_20` ahead of EW.
 * **Bootstrap robustness:** once dependence-aware resampling and proxy trading frictions are accounted for, the strategy's advantage weakens materially.
 * **Estimator sensitivity:** AR is somewhat more punitive than CS, but both estimators imply the same broad conclusion.
 
