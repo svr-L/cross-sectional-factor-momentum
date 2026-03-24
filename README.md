@@ -120,7 +120,7 @@ The current notebook already includes proxy transaction costs and historical ris
 
 ```text
 .
-├── Factor\_Momentum.ipynb
+├── Factor_Momentum.ipynb
 ├── README.md
 ├── requirements.txt
 ├── .gitignore
@@ -139,17 +139,17 @@ The current notebook already includes proxy transaction costs and historical ris
 3. Open the notebook:
 
 ```bash
-   jupyter notebook Factor\_Momentum.ipynb
+   jupyter notebook Factor_Momentum.ipynb
    ```
 
 4. In the notebook, choose either:
 
-   * `DATA\\\_SOURCE = "hdf"`, or
-   * `DATA\\\_SOURCE = "yahoo"` for the public-data version.
+   * `DATA_SOURCE = "hdf"`, or
+   * `DATA_SOURCE = "yahoo"` for the public-data version.
 5. Choose the risk-free proxy:
 
-   * `RF\\\_SOURCE = "DGS3MO"` (default), or
-   * `RF\\\_SOURCE = "SOFR"`.
+   * `RF_SOURCE = "DGS3MO"` (default), or
+   * `RF_SOURCE = "SOFR"`.
 
 ## References
 
