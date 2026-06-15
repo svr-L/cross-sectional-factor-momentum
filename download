@@ -1,0 +1,12 @@
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.venv/
+.env
+.DS_Store
+/data/
+*.h5
+*.hdf
+*.hdf5
+*.csv
+!example_*.csv
