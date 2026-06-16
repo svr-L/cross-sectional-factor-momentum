@@ -285,12 +285,6 @@ The notebook defaults to public Yahoo Finance data. If FRED is available, `DGS3M
 
 ---
 
-## Résumé bullet
-
-> Developed an ETF-based factor-momentum alpha-validation pipeline across Value, Size, Momentum, Quality and Low-Volatility ETFs, with realistic next-day implementation, transaction-cost proxies, passive SPY benchmarking, signal-permutation nulls, paired stationary/FHS/VAR-sieve bootstraps, Newey-West spanning regressions, walk-forward model selection and White/SPA/Deflated-Sharpe multiple-testing controls; found that top-factor momentum improved realized drawdown-adjusted performance and beat structurally identical random-selection nulls, but was largely replicated by static factor/market exposures and did not survive full data-snooping controls.
-
----
-
 ## Limitations
 
 - The investable ETF universe is intentionally small; five ETFs limit cross-sectional breadth.
