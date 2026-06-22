@@ -1,301 +1,217 @@
-# ETF Factor Momentum: Alpha Validation Under Implementation Frictions
+# Factor Momentum on Equity Risk-Factor ETFs
 
-An ETF-based implementation and stress test of **cross-sectional factor momentum**. The project asks whether an Arnott-style factor-momentum idea remains useful after it is translated into a **tradable ETF implementation** with realistic timing, transaction-cost proxies, passive benchmarking, signal-permutation nulls, spanning regressions, dependence-aware bootstraps and data-snooping controls.
-
-This is best read as an **alpha-validation / alpha due-diligence** project. It does not claim that the retained strategy is a production-ready standalone alpha. The main contribution is a disciplined research pipeline that separates a weak-but-interesting signal from static factor exposure, benchmark effects, implementation frictions and specification search.
+An ETF-based implementation of **cross-sectional Factor Momentum** inspired by **Arnott, Clements, Kalesnik & Linnainmaa**, evaluated under a **historical risk-free rate**, **proxy transaction costs**, a **passive market benchmark**, and **dependence-aware resampling** (Politis–Romano stationary bootstrap, a paired-difference test, and a signal-permutation null).
 
 ---
 
-## Research question
+## What changed in this revision
 
-> Does cross-sectional factor momentum survive a tradable ETF implementation once we account for next-day execution, transaction costs, passive market exposure, random-selection nulls, dependence-aware inference and multiple-testing controls?
+This version corrects two issues that affected the previously reported numbers and adds several robustness refinements. **The numeric result tables from the previous README are therefore no longer valid and have been removed** (see *Results* below for how to regenerate them).
 
-The answer from the current run is nuanced:
+**Corrections**
 
-- **Yes, there is some signal value:** the top-factor momentum rule improves realized drawdown-adjusted performance and beats structurally identical random-selection strategies, especially on Calmar / Martin / max drawdown.
-- **No, it is not a robust standalone alpha:** the edge is weak in paired bootstrap comparisons, is largely spanned by static factor/market exposure, and does not pass White / SPA data-snooping controls.
+1. **Genuine next-day implementation (timing fix).** Previously the new target weights earned the *entry-day* close-to-close return, which is equivalent to executing at the **signal-date** close — a roughly one-day look-ahead that mildly flatters the more concentrated momentum portfolios relative to equal weight. Implementation is now controlled by `IMPLEMENTATION_LAG` (trading days). With the default `IMPLEMENTATION_LAG = 1`, the trade is executed at the **close of the day after the signal**, the portfolio holds the drifted *pre-trade* weights on the trade day, and the new weights first earn on the following day. `IMPLEMENTATION_LAG = 0` reproduces the old "execute at the signal-date close" convention.
+2. **Bootstrap on the common sample.** The stationary bootstrap was being fed the *raw* return panel, which carries leading `NaN`s from the later-inception ETFs; resampling over the full index and dropping `NaN`s afterwards fragments the blocks at the inception boundary. Returns are now reduced to the **common (no-missing) sample before** resampling, so block structure is preserved.
 
-The most defensible interpretation is therefore:
+**Refinements**
 
-> ETF factor momentum contains a modest **defensive timing effect**, but the realized performance is largely explained by static factor/market exposures rather than a strong dynamic alpha.
+3. **Paired-difference robustness test.** Inside each bootstrap replica all strategies are computed on the same resampled panel, so the within-replica difference (e.g. `MomTop1_80_20 − EW`) is a valid **paired** bootstrap. The notebook reports the distribution of ΔCAGR / ΔSharpe / ΔMartin and the share of replicas in which the strategy beats the benchmark, `P(strat > bench)`. This is the headline robustness statistic.
+4. **Passive market benchmark.** `SPY` (buy-and-hold) is added alongside the equal-weight factor blend, threaded through the realized tables, the wealth plots and the bootstrap.
+5. **Signal-permutation null.** A new section benchmarks the strategy against structurally identical but **signal-free** strategies (see *Why EW is not a neutral benchmark*).
+6. **Cost realism.** A flat **fixed-bps** one-way cost (`TC_FIXED_BPS`) is added next to the AR/CS proxies as a sanity check, since OHLC-based estimators are noisy and tend to *overstate* spreads on liquid ETFs. The omission of the Corwin–Schultz overnight (gap) adjustment — which needs open prices, not in this OHLC bundle — is documented in code.
+7. **Sortino denominator.** Now the **target semideviation** `sqrt(E[min(excess, 0)²])` (root-mean-square of downside excess returns), rather than the standard deviation of the truncated series.
+8. **Turnover labelling.** `Σ|Δw|` is reported as **two-way** turnover, with the **one-way** figure (half) alongside it for comparison with typical one-way turnover quotes. The cost charge `Σ c·|Δw|` with `c` = half-spread is unchanged and is not double-counting.
+
+**Further robustness layers (this revision)**
+
+9. **Spanning regression.** Newey-West (HAC) regression of the strategy's excess return on the five factor ETFs' excess returns (plus `SPY`); a zero alpha means the strategy is *spanned* by static factor exposure. This is the benchmark that sidesteps the `SPY` vs `SPY − rf` question (everything is in excess returns).
+10. **Inverse-volatility weighting.** The same momentum selection sized by inverse volatility instead of fixed 80/20 / 35/35, to separate *selection* from *concentration*; plus an inverse-vol-of-all blend as a risk-parity-like alternative to equal weight.
+11. **Serial-dependence diagnostics.** Ljung-Box on levels and squares and Engle's ARCH-LM, to test for the mean-reversion/autoregression and volatility clustering that determine whether the bootstrap engine matters.
+12. **Dependence-aware bootstrap engines.** A **Filtered Historical Simulation** (AR(p)-GJR-GARCH(1,1) filtering, row-resampled standardized residuals, re-inflation) that preserves volatility clustering and fat left tails, and a **VAR(p)-sieve wild bootstrap** that preserves cross-factor lead-lag — both as selectable alternatives to the stationary bootstrap.
+13. **Sharpe-ratio inference.** The **Ledoit-Wolf (2008)** HAC + studentized-block test for the difference of two Sharpe ratios, and the **Probabilistic Sharpe Ratio** (skew/kurtosis-aware).
+14. **Break-even transaction cost.** The flat one-way cost (bps) at which the edge over EW / SPY vanishes — a single, robust cost-sensitivity number.
+15. **BCa intervals.** Bias-corrected and accelerated intervals (circular-block bootstrap + block jackknife) for the realized Sharpe and CAGR.
+16. **Regime / subsample stability.** Metrics by calendar year, by sample halves, and by trailing market-volatility regime.
+17. **Multiple-testing control.** **White's (2000) Reality Check** and **Hansen's (2005) SPA** over the variant × concentration × cost grid, plus the **Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014)** on the best specification.
+
+**Fixes after the first full run**
+
+18. **Risk-free cascade.** FRED (`DGS3MO`) → Yahoo `^IRX` (13-week T-bill) → zero, so a FRED outage no longer silently forces a zero risk-free.
+19. **Benchmark window alignment.** `SPY`'s realized metrics are computed on the same post-warm-up window as the strategies (both in the realized tables and inside every bootstrap replica).
+20. **FHS numerical guard.** Simulated returns from the AR-GJR-GARCH re-inflation are sanitised and clipped to [−99%, +100%] (non-binding on real data) so pathological draws can no longer produce `NaN`/overflow in the wealth path.
+
+**Extensions: localising the gap**
+
+21. **Long-short academic factors.** The same cross-sectional momentum signal run on the Fama-French **long-short** factors (SMB, HML, RMW, CMA, Mom), **restricted to the ETF common-sample window** (`LONGSHORT_MATCH_ETF_WINDOW`) for an apples-to-apples comparison, with the paired-difference and signal-permutation tests and a side-by-side ETF-vs-long-short table — to test whether the edge lives in the factor construction or the long-only ETF vehicle.
+22. **True out-of-sample walk-forward.** Expanding-window protocol that re-selects the best specification on past data only and banks its future returns, compared to equal-weight on the same window. The grid is **net-only** (`SPEC_GRID_NET_ONLY`), so the OOS pick is compared fairly to net equal-weight (no gross-spec auto-selection).
+23. **Rank / quantile weighting + one-flag extended universe.** Long-top-quantile and rank-proportional builders that separate selection from concentration and scale to any N; setting `USE_EXTENDED_UNIVERSE = True` re-points the entire notebook onto a pre-committed extended single-factor ETF universe (`EXTENDED_TICKERS`) for the breadth test.
+24. **Conditional (regime) spanning + rolling alpha.** A two-alpha spanning regression interacting the constant and loadings with a high/low market-volatility dummy (Newey-West), plus a rolling 2-year alpha, to see whether the zero full-sample alpha hides a regime-conditional one.
+25. **Spanning decomposition + selection mechanism.** A static-replication portfolio (fixed spanning betas) that makes "spanned" concrete, and a selection-quality diagnostic that ranks the forward return of the picked factor by regime.
+26. **Universe robustness.** Leave-one-out (drop each ETF) and a breadth gradient (Sharpe gap over equal-weight across random subsets of increasing size), to test whether the extended-breadth result is genuinely breadth-driven rather than a single-name or lucky-universe artefact. Also fixed two stale printed labels (the rank/quantile and selection-quality cells now report the live factor count) and hardened the weight builders so the breadth sweep is safe for small subsets (the 80/20 and 35/35 builders renormalise instead of dividing by zero when there is no "rest" bucket, e.g. a two-ETF subset).
 
 ---
 
-## Tradable universe
+## Project objective
 
-Public-data ETF mapping:
+The project studies whether an Arnott-style factor-momentum signal remains attractive once it is translated from an academic construct into a **tradable ETF implementation** and stress-tested with realistic frictions and dependence-aware inference. The notebook covers:
 
-| Factor sleeve | ETF |
-|---|---:|
-| Value | `RPV` |
-| Size | `SIZE` |
-| Momentum | `MTUM` |
-| Quality | `SPHQ` |
-| Low Volatility | `SPLV` |
+* **6–1** and **12–1** cross-sectional factor-momentum signal construction;
+* a **monthly rebalancing backtest with genuine next-day implementation and drifting weights** between rebalances;
+* realized **gross** and **net-of-costs** performance, plus a **passive market benchmark** (`SPY`);
+* historical **daily risk-free** adjustment (default FRED `DGS3MO`, `SOFR` optional);
+* proxy transaction costs via **Abdi–Ranaldo (2017)** and **Corwin–Schultz (2012)**, plus a **flat-bps** sanity check;
+* **stationary-bootstrap** robustness with the full strategy rebuilt inside each replica;
+* a **paired-difference** bootstrap test and a **signal-permutation null**.
 
-Passive market benchmark: `SPY`.
+## Data
 
-The current final run uses the common-data ETF sample from **2013-04-19 to 2026-06-05**. The raw panel starts in 2005 because some ETFs have earlier histories, but the strategy is evaluated on the common intersection.
+Two data sources are supported:
 
----
+1. the **original HDF dataset** used in the master project (`DATA_SOURCE = "hdf"`);
+2. **Yahoo Finance** OHLC ETF data for a public-data replication (`DATA_SOURCE = "yahoo"`).
+
+Public-data ETF mapping: `RPV` — Value, `SIZE` — Size, `MTUM` — Momentum, `SPHQ` — Quality, `SPLV` — Low Volatility. The passive benchmark is `SPY`.
 
 ## Methodology
 
-### Signal
+* **Signal.** Cumulative log-return over the formation window, **skipping** the most recent month (`6−1` = 6-month formation, 1-month skip; `12−1` analogous), evaluated at each **month-end signal date**.
+* **Portfolios.** `MomTop1_80_20` (80% in the top factor, 20% split across the rest), `MomTop2_35_35` (35%/35% in the top two, remainder split), and `EW` (equal weight). Weights are set at the rebalance and then **drift** with realized returns until the next rebalance.
+* **Timing.** Signal at month-end close → trade at the close `IMPLEMENTATION_LAG` trading days later (default 1, i.e. next day) → new weights earn from the following day. On the trade day the portfolio holds the drifted pre-trade weights; the cost is charged on the first day the new weights are held.
+* **Costs.** Daily one-way half-spread proxies (AR/CS) are smoothed with a trailing median and applied to `Σ c·|Δw|` against the **drifted pre-trade weights**. A flat `TC_FIXED_BPS` alternative is available. Spreads are clipped at `TC_SPREAD_CLIP_UPPER` (note: the 10% default is wide and rarely binds for liquid ETFs).
+* **Risk-free.** Historical daily simple rate from FRED, lagged one day and forward-filled; risk-adjusted metrics use the realized excess series rather than a fixed zero.
+* **Bootstrap.** Politis–Romano stationary bootstrap on the **common-sample** panel; returns, the aligned cost panel and the benchmark are resampled **jointly** (shared indices), and the signal/weights/backtests/metrics are rebuilt inside every replica. The average block length can be chosen by matching the autocorrelation of absolute returns.
+* **Paired difference.** Within-replica `strat − bench` distributions and `P(strat > bench)` (higher-is-better convention; for max drawdown "higher" means shallower).
+* **Signal-permutation null.** See below.
 
-- Cross-sectional cumulative log-return momentum.
-- Main variant: **6−1** formation window: 6-month lookback, skipping the most recent month.
-- Alternative variant: **12−1**.
-- Signals are sampled at month-end trading dates.
+## Why EW is not a neutral benchmark (and the signal-permutation null)
 
-### Portfolio construction
+Equal-weighting the five factor ETFs is **itself an active factor bet**: the equity risk premium is not the equal-weight combination of these risk factors, so EW carries its own static factor exposure. Comparing a concentrated momentum portfolio to EW therefore answers "does the momentum *tilt* beat equal weight?" but **conflates** two distinct things — the skill of the *signal* and the differences in *static factor exposure / concentration* between the two portfolios.
 
-Main portfolios:
+Two additions disentangle them:
 
-- `MomTop1_80_20`: 80% in the strongest factor ETF, 20% split across the remaining four.
-- `MomTop2_35_35`: 35% / 35% in the top two factors, 30% split across the remaining three.
-- `EW`: equal-weighted blend of the five factor ETFs.
+* **`SPY` as a passive market benchmark** contextualises whether this tactical 5-ETF allocation beats simply holding the market.
+* **A signal-permutation (random-selection) null.** The notebook builds a Monte-Carlo benchmark of strategies that are **structurally identical** to the real one — same 80/20 or 35/35 concentration, same rebalance dates, same costs, same timing — but that pick the held factor(s) **at random** each month. The one-sided p-value is the share of random strategies that match or beat the real strategy on each metric. Because the structure is held fixed and only the *selection rule* differs, any edge in the upper tail is attributable to the **momentum signal**, not to the static exposure of a particular benchmark blend. A small p-value (real strategy in the upper tail of the random distribution) is the clean evidence that the signal adds value.
 
-The notebook also tests inverse-volatility sizing, rank / quantile weighting and walk-forward model selection.
-
-### Execution timing
-
-The default setting uses genuine next-day implementation:
-
-1. signal observed at month-end close;
-2. trade executed at the close of the next trading day;
-3. new weights first earn returns from the following trading day.
-
-This avoids the common one-day look-ahead that occurs when a month-end signal earns the next day's close-to-close return as if it had already been implemented.
-
-### Costs and risk-free rate
-
-Transaction costs are estimated through:
-
-- Abdi–Ranaldo high/low/close spread proxy (`AR`);
-- Corwin–Schultz high/low spread proxy (`CS`);
-- flat fixed-bps one-way cost sanity check (`FIXED`).
-
-Costs are charged using drifted pre-trade weights and one-way half-spread estimates. The final run used `AR` as the primary estimator.
-
-Risk-adjusted statistics use a historical risk-free series. The default source is FRED `DGS3MO`; the final run used Yahoo `^IRX` as a fallback because FRED timed out during execution.
+For the broader specification-search concern (choosing among `6−1`/`12−1`, AR/CS/FIXED, top-1/top-2), the notebook now includes data-snooping-robust procedures — **White's (2000) Reality Check**, **Hansen's (2005) SPA** test and the **Deflated Sharpe Ratio** — over the full grid, on top of the per-specification paired-difference and permutation machinery.
 
 ---
 
-## Headline realized results
+## Results — executed run (data vintage 2026-06-04)
 
-Final run configuration:
+> The tables below come from **one full run** on Yahoo data: sample **2013-04-19 → 2026-06-04** (`common_rows = 3302`; strategy window `n = 3144` after the 6-1 warm-up), `VARIANT = "6-1"`, `IMPLEMENTATION_LAG = 1`, primary cost estimator **AR**. **Caveat:** in this run FRED was unreachable and the risk-free fell back to **0**, so the *absolute* Sharpe/Sortino/Martin are overstated by roughly the T-bill level (~1–1.5%/yr over the sample). All *relative* statistics (paired differences, spanning, Ledoit-Wolf) are unaffected because the risk-free cancels. The notebook now falls back to Yahoo `^IRX` before zero; re-running with a working risk-free nudges the absolute risk-adjusted numbers down slightly. Re-run to refresh against the current data vintage.
 
-| Item | Value |
-|---|---:|
-| Common ETF sample | 2013-04-19 → 2026-06-05 |
-| Backtest observations | 3,145 |
-| Implementation lag | 1 trading day |
-| Primary cost estimator | Abdi–Ranaldo (`AR`) |
-| Risk-free used in run | Yahoo `^IRX` fallback |
-| Stationary-bootstrap block length | 30 |
+**Realized net-of-cost metrics (AR estimator), strategy window `n = 3144`:**
 
-### Realized net performance, primary AR cost estimator
+| Strategy | CAGR | AnnVol | MxDD | Sharpe | Sortino | Calmar | Martin |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| MomTop1_80_20 | 0.135 | 0.176 | −0.332 | 0.810 | 1.147 | 0.408 | 2.42 |
+| MomTop2_35_35 | 0.118 | 0.165 | −0.371 | 0.762 | 1.063 | 0.319 | 1.88 |
+| EW | 0.122 | 0.164 | −0.381 | 0.785 | 1.096 | 0.321 | 1.96 |
+| SPY (buy & hold) | 0.141 | 0.172 | −0.337 | 0.853 | 1.203 | 0.417 | 2.13 |
 
-| Strategy | CAGR | AnnVol | MaxDD | Sharpe | Sortino | Calmar | Ulcer | Martin |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `MomTop1_80_20` | 13.44% | 17.58% | -33.19% | 0.7315 | 1.0327 | 0.4048 | 0.0560 | 2.1671 |
-| `MomTop2_35_35` | 11.61% | 16.46% | -37.07% | 0.6717 | 0.9344 | 0.3134 | 0.0627 | 1.6453 |
-| `EW` | 12.09% | 16.44% | -38.10% | 0.6984 | 0.9721 | 0.3174 | 0.0622 | 1.7338 |
-| `SPY` | 13.87% | 17.19% | -33.72% | 0.7666 | 1.0771 | 0.4113 | 0.0659 | 1.9054 |
+Gross MomTop1: CAGR 0.140, Sharpe 0.831, Martin 2.55. Estimated one-way costs: AR ≈ 16–22 bps, CS ≈ 5–14 bps, FIXED 2 bps — AR/CS are high for liquid ETFs and likely overstate the true spread, yet net conclusions are identical across AR/CS/FIXED. MomTop1 two-way turnover ≈ 5.2×/yr, cost drag ≈ 0.4%/yr; average MomTop1 weights tilt to Momentum (0.35) and Value (0.24), away from Size (0.06).
 
-Interpretation:
+**Spanning regression (net, Newey-West) — the decisive test:**
 
-- `MomTop1_80_20` beats `EW` on realized CAGR, Sharpe, MaxDD and Martin.
-- `SPY` remains stronger on realized CAGR and Sharpe.
-- `MomTop1_80_20` improves drawdown-adjusted performance relative to `SPY` through a better Martin ratio and slightly shallower max drawdown.
+| Strategy | α (annualised) | t(α) | p(α) | R² |
+|---|--:|--:|--:|--:|
+| MomTop1_80_20 | +0.40% | 0.23 | 0.82 | 0.89 |
+| MomTop2_35_35 | −0.69% | −0.93 | 0.35 | 0.98 |
 
----
+MomTop1 loadings: Momentum 0.42, Value 0.20, LowVol 0.15, Quality 0.13, Size −0.08, SPY 0.15. **The alpha is statistically zero** — the returns are explained by a fixed factor combination, so the timing/selection adds nothing beyond static exposure.
 
-## Signal-permutation null: where the positive result comes from
+**Paired bootstrap differences (net, 1000 replicas):**
 
-The cleanest evidence of signal value is the **random-selection null**. This test compares the real momentum strategy against strategies with the same 80/20 structure, same rebalance dates, same costs and same timing, but random factor selection each month.
+| Difference | ΔCAGR | ΔSharpe | ΔMartin | P(Sharpe>0) | P(Martin>0) |
+|---|--:|--:|--:|--:|--:|
+| MomTop1 − EW | −0.000 | −0.069 | −0.33 | 0.26 | 0.28 |
+| MomTop2 − EW | +0.000 | −0.012 | −0.08 | 0.39 | 0.46 |
+| MomTop1 − SPY | −0.019 | −0.126 | −0.52 | 0.16 | 0.19 |
 
-### `MomTop1_80_20` vs structurally identical random top-1 strategies
+`P(strat>bench) < 0.5` everywhere → **no robust risk-adjusted edge over EW**, and a robust **loss to SPY**. The slim realized Sharpe lead of MomTop1 over EW (0.810 vs 0.785) reverses under resampling, i.e. it is within sampling noise. **Ledoit-Wolf** ΔSharpe: vs EW p = 0.83, vs SPY p = 0.72 (neither significant). **PSR**(MomTop1 vs 0) = 0.998 — the strategy *is* reliably profitable in absolute terms (skew −0.18, excess kurtosis ≈ 15.6).
 
-| Metric | Actual | Null mean | Null p05 | Null p95 | One-sided p-value |
-|---|---:|---:|---:|---:|---:|
-| CAGR | 13.44% | 10.96% | 1.78% | 20.27% | 0.073 |
-| Sharpe | 0.7315 | 0.6103 | 0.1294 | 1.0963 | 0.083 |
-| Calmar | 0.4048 | 0.2902 | 0.0339 | 0.7201 | 0.029 |
-| Martin | 2.1671 | 1.3305 | 0.0655 | 3.7925 | 0.034 |
-| MaxDD | -33.19% | -38.34% | -58.71% | -20.72% | 0.042 |
+**Signal-permutation null — MomTop1 vs random top-1 of the same structure (1000):**
 
-This is the most constructive result in the project: the momentum signal is not merely a random way to concentrate the portfolio. Its advantage is strongest on drawdown-adjusted metrics, suggesting a **defensive selection effect** rather than a high-conviction return-forecasting alpha.
+| Metric | actual | null mean | one-sided p |
+|---|--:|--:|--:|
+| CAGR | 0.135 | 0.111 | 0.081 |
+| Sharpe | 0.810 | 0.692 | 0.093 |
+| Calmar | 0.408 | 0.294 | **0.033** |
+| Martin | 2.42 | 1.52 | **0.034** |
+| MxDD | −0.332 | −0.383 | **0.033** |
 
----
+The momentum signal **beats random selection**, significantly on the drawdown metrics — the signal is informative, especially for downside control. (MomTop2 vs random top-2: p ≈ 0.30–0.36, not significant — breadth is too small at 2 of 5.)
 
-## Robustness: why this is not a standalone alpha claim
+**Break-even one-way cost (bps):** MomTop1 vs EW = 30 (CAGR) / 16 (Sharpe); MomTop1 vs SPY = 0; MomTop2 = 0 everywhere. The Sharpe edge over EW dies around 16 bps — within the noise of the AR/CS cost estimate.
 
-### Paired stationary bootstrap
+**Dependence diagnostics & engines:** ARCH-LM and Ljung-Box-on-squares reject at p ≈ 0 for every series (strong volatility clustering; kurtosis ≈ 16). The **FHS** engine, which preserves clustering and fat tails, therefore gives lower, more honest distributions than the stationary bootstrap (MomTop1 Sharpe 0.66 vs 0.79; Martin 1.11 vs 1.66) — confirming the stationary bootstrap was optimistic on tail-sensitive metrics. The MomTop1 − EW paired difference stays ≈ 0 under both **FHS** and the **VAR-sieve**, so the verdict is engine-robust.
 
-The paired bootstrap rebuilds all strategies inside each resampled return panel and compares strategy-minus-benchmark metrics within the same bootstrap replica.
+**Regimes:** MomTop1 is far stronger in low-volatility regimes (Sharpe 1.34, Martin 4.96) than high-volatility ones (Sharpe 0.63, Martin 1.72), with losing years in 2018 (−1.8%) and 2022 (−5.1%).
 
-#### `MomTop1_80_20 − EW`, net AR
+**Multiple testing across the 16-spec grid (vs EW):** White Reality Check p = 0.26, Hansen SPA ("consistent") p = 0.26 → the best specification does **not** beat EW once the search is accounted for. The Deflated Sharpe Ratio prints ≈ 0.996 but is **unreliable here**: the 16 specs are near-collinear (trial-Sharpe dispersion ≈ 0.02), which violates its independent-trials assumption and collapses its threshold toward zero — trust the SPA p-value, not the DSR.
 
-| Metric | Mean diff | p05 | p50 | p95 | P(strategy > benchmark) |
-|---|---:|---:|---:|---:|---:|
-| CAGR | -0.11% | -3.41% | -0.17% | 3.46% | 0.469 |
-| Sharpe | -0.0637 | -0.2425 | -0.0642 | 0.1150 | 0.277 |
-| Martin | -0.2941 | -1.2827 | -0.2158 | 0.5112 | 0.278 |
-| MaxDD | -1.87% | -9.63% | -1.45% | 4.72% | 0.379 |
+### Verdict
 
-#### `MomTop1_80_20 − SPY`, net AR
+The ETF factor-momentum strategy is **profitable in absolute terms** (PSR ≈ 1, net CAGR ≈ 13.5%) and its **signal is genuinely informative** (it beats structurally-identical random selection, significantly on drawdowns). But it is **spanned by static factor exposure** (Newey-West α ≈ 0), it **does not beat equal-weight on a risk-adjusted basis**, it **loses to the market (SPY)** net of costs, and it **does not survive multiple-testing control**. The reconciling mechanism is diversification: the signal picks better-than-random factors, but concentrating into one or two of them sacrifices more diversification than the selection skill recovers — so smart concentration ties a naïve equal-weight blend and trails the market. This is a clean, defensible **theory-to-implementation gap**: the Arnott factor-momentum effect is real, but a long-only 5-ETF implementation does not translate it into tradable alpha.
 
-| Metric | Mean diff | p05 | p50 | p95 | P(strategy > benchmark) |
-|---|---:|---:|---:|---:|---:|
-| CAGR | -1.91% | -6.74% | -1.75% | 2.59% | 0.215 |
-| Sharpe | -0.1240 | -0.3522 | -0.1217 | 0.0886 | 0.167 |
-| Martin | -0.5010 | -1.6426 | -0.4274 | 0.4091 | 0.171 |
+> **Breadth result (extended run, `USE_EXTENDED_UNIVERSE = True`, 10 single-factor ETFs, same ~2013–2026 window).** Expanding the universe from 5 to 10 distinct single-factor ETFs largely rescues the strategy and re-points the conclusion from *vehicle* to **breadth**. Going 5 → 10: MomTop1 net Sharpe rises 0.73 → **0.87** (now above SPY 0.77 and EW 0.72); the spanning alpha goes from ≈ 0 (t = 0.3) to **+2.7%/yr (t = 1.4, p = 0.16)**; the signal-permutation null flips from marginal (Sharpe p ≈ 0.09) to **strongly significant** (p ≈ 0.002; CAGR/Calmar p ≈ 0.000); the out-of-sample **walk-forward** beats equal-weight (Sharpe 0.88 vs 0.70); the best specification beats equal-weight after **multiple-testing** (Hansen SPA p ≈ **0.044**, vs 0.26 at N = 5); rank/quantile weighting beats equal-weight (0.75 vs 0.72); and on the Fama-French **long-short** factors momentum now beats the equal-weight blend once the window is matched (P ≈ 0.76). **But the win is in return, not robustly in risk-adjusted terms:** the paired bootstrap still gives `P(MomTop1 Sharpe > EW) ≈ 0.28` and `> SPY ≈ 0.18` (the concentrated bet's realised Sharpe lead is within sampling noise), and the spanning alpha is not significant at 5%. The selection adds value mainly by over-weighting the strongest factor (it picks the best factor ≈ 2× more than random, but also the worst more than random — a high-variance, momentum-chasing edge), which is why it beats a random pick yet not a diversified blend on a risk-adjusted basis. **Net read:** the N = 5 failure was largely a *breadth* problem; at ~10 factors the factor-momentum signal is demonstrably skilled and SPA-significant against equal-weight, the edge is on mean return and best harvested with diversified (rank/quantile) weighting rather than 80/20 concentration, and it beats equal-weight but not robustly the market. Caveats: the extended universe is a candidate list (some members are debatable as factors — see the universe-robustness section), the sample is ~13 years, and "beats EW" is benchmark-specific (not "beats SPY"). The long-short section needs network access to Kenneth French's data library (or a CSV via `LONGSHORT_CSV_PATH`).
 
-The realized result is therefore not robustly dominant under dependence-aware paired resampling.
+**Reproduction.** Default configuration (edit the *USER CONFIGURATION* cell):
 
-### Spanning and static replication
+```python
+DATA_SOURCE = "yahoo"      # or "hdf" for the original master-project panel
+VARIANT = "6-1"            # or "12-1"
+IMPLEMENTATION_LAG = 1     # genuine next-day; 0 reproduces the legacy signal-close timing
+USE_HISTORICAL_RF = True;  RF_SOURCE = "DGS3MO"     # falls back to Yahoo ^IRX, then to 0
+RUN_BENCHMARK = True;      BENCH_TICKER = "SPY"
+RUN_TRANSACTION_COSTS = True
+TC_ESTIMATOR = "AR";       TC_ESTIMATORS_TO_COMPARE = ("AR", "CS", "FIXED");  TC_FIXED_BPS = 2.0
+RUN_BOOTSTRAP = True;      N_BOOT = 1000;  BOOTSTRAP_SEED = 7
+RUN_RANDOM_NULL = True;    N_RANDOM = 1000;  RANDOM_NULL_SEED = 12345
+USE_EXTENDED_UNIVERSE = False   # set True to run the whole notebook on the extended ETF universe (breadth test)
+```
 
-A Newey-West spanning regression of `MomTop1_80_20` on the five factor ETFs plus `SPY` gives:
+Record the realized sample window printed by the load cell (`common_start` … `common_end`, `common_rows`) alongside the tables, since it depends on the data vintage.
 
-| Statistic | Value |
-|---|---:|
-| Annualized alpha | 0.49% |
-| alpha t-stat | 0.28 |
-| alpha p-value | 0.778 |
-| R² | 0.888 |
+## How to run
 
-A static non-negative replication is highly similar to the actual strategy:
-
-| Statistic | Value |
-|---|---:|
-| Corr(static, actual) | 0.942 |
-| R² | 0.888 |
-| Static Sharpe | 0.747 |
-| Actual Sharpe | 0.732 |
-
-Implied long-only static weights:
-
-| Sleeve | Weight |
-|---|---:|
-| Momentum | 39.4% |
-| Value | 19.2% |
-| Size | 0.0% |
-| Quality | 12.0% |
-| LowVol | 15.1% |
-| SPY | 14.3% |
-
-This is the main reason the project does not claim standalone alpha. Much of the strategy can be replicated by a static factor/market blend.
-
-### Multiple-testing controls
-
-The specification grid covers 16 strategies across signal variants, concentrations and cost assumptions. Against the equal-weight benchmark:
-
-| Test | Result |
-|---|---:|
-| White Reality Check p-value | 0.2697 |
-| Hansen SPA consistent p-value | 0.2690 |
-| Best specification | `6-1|top1|GROSS` |
-| Best mean annualized excess over EW | 1.91% |
-
-The Deflated Sharpe Ratio is high in the current run, but the specifications are highly correlated, making the independent-trials adjustment too lenient. The SPA result is treated as the more reliable multiplicity-robust verdict.
-
----
-
-## Mechanism: defensive timing, not alpha cannon
-
-The top-1 momentum pick does not systematically choose the best-performing factor in the next month. Selection quality is close to random on average:
-
-| Regime | Mean rank | P(worst) | P(best) | Months |
-|---|---:|---:|---:|---:|
-| Overall | 3.020 | 22.52% | 23.84% | 151 |
-| Low vol | 3.000 | 25.68% | 25.68% | 74 |
-| High vol | 3.039 | 19.48% | 22.08% | 77 |
-
-Rank 1 = next month's worst factor, rank 5 = best factor. The signal is not a strong winner-picker. The more plausible mechanism is defensive: in high-volatility months it appears to avoid the worst factor somewhat more often than random, which is consistent with the strategy's stronger evidence on Martin / Calmar / MaxDD than on mean returns.
-
----
-
-## Additional checks
-
-### Long-short academic factor comparison
-
-To test whether the ETF wrapper is the issue, the notebook also applies the same logic to Fama-French-style long-short factor returns.
-
-| Strategy | CAGR | Sharpe | MaxDD | Martin |
-|---|---:|---:|---:|---:|
-| Long-short `MomTop1` | 1.99% | 0.0683 | -59.37% | 0.0041 |
-| Long-short `MomTop2` | 3.20% | 0.2315 | -28.18% | 0.1042 |
-| Long-short `EW` | 2.88% | 0.2174 | -18.27% | 0.1344 |
-
-The long-short result does not rescue the signal. This supports the interpretation that the ETF result is mostly a long-only/style/market-interaction effect rather than pure factor-momentum alpha.
-
-### Walk-forward model selection
-
-The notebook runs an expanding-window walk-forward exercise that reselects the best specification approximately quarterly.
-
-| Strategy | CAGR | Sharpe | Sortino | Calmar | Martin | MaxDD |
-|---|---:|---:|---:|---:|---:|---:|
-| OOS selected | 13.88% | 0.6851 | 0.9661 | 0.4058 | 1.8975 | -34.21% |
-| EW same window | 12.23% | 0.6351 | 0.8825 | 0.3210 | 1.4638 | -38.10% |
-
-The selected specification is almost always `6-1|top1|GROSS`, so this is a useful OOS sanity check rather than evidence of a highly adaptive selector.
-
----
-
-## Final interpretation
-
-The project's best-supported claim is:
-
-> A simple top-factor ETF momentum rule improves realized drawdown-adjusted performance and beats a structurally identical random-selection null, but its apparent edge is mostly defensive, substantially spanned by static factor/market exposures, and not robust enough under paired bootstrap and SPA controls to be presented as a standalone alpha.
-
-That makes this repository useful as a **factor-timing alpha-validation case study**:
-
-- it shows how to translate an academic idea into an investable ETF test;
-- it evaluates timing, costs, benchmark choice and null models;
-- it distinguishes signal value from concentration and static exposure;
-- it avoids overclaiming when the evidence is mixed.
-
----
+1. Create a virtual environment and install dependencies (`pip install -r requirements.txt`). The notebook needs `numpy`, `pandas`, `matplotlib`, `scipy`, `yfinance` (for `DATA_SOURCE="yahoo"`), `pandas_datareader` (for the FRED risk-free), and `arch` (for the Filtered Historical Simulation engine and the Hansen SPA test). `statsmodels` is optional.
+2. Open the notebook: `jupyter notebook Factor_Momentum.ipynb`.
+3. Set `DATA_SOURCE` (`"hdf"` or `"yahoo"`), `RF_SOURCE` (`"DGS3MO"` default, `"SOFR"` only from 2018-04-03), and the `RUN_*` flags in the *USER CONFIGURATION* cell. The full run is heavy; for a quick smoke test, switch off the layers you don't need and/or lower `N_BOOT`, `N_RANDOM`, `ENGINE_N_SIMS`, `MT_N_BOOT`.
+4. Run all cells; each analysis cell prints the tables described above.
 
 ## Repository structure
 
 ```text
 .
-├── Factor_Momentum.ipynb          # Clean research notebook
-├── factor_momentum_core.py        # Reusable implementation and inference utilities
+├── Factor_Momentum.ipynb
 ├── README.md
 ├── requirements.txt
-└── .gitignore
+├── .gitignore
+└── LICENSE
 ```
 
----
+## Planned extensions
 
-## How to run
+* A **risk-managed momentum overlay** *à la* **Barroso & Santa-Clara (2015)** (volatility-managed momentum).
+* A full **extended-universe run** (8–12 distinct single-factor ETFs chosen by an explicit pre-committed rule) — the rank/quantile builders and the `EXTENDED_TICKERS` hook are in place; this only needs the vetted ticker list and a data pull.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-jupyter notebook Factor_Momentum.ipynb
-```
+## Data sources
 
-The notebook defaults to public Yahoo Finance data. If FRED is available, `DGS3MO` is used for the historical risk-free rate. If FRED times out, the code falls back to Yahoo `^IRX`; if all sources fail, it uses a zero-risk-free fallback and prints the source explicitly.
+* Yahoo Finance (ETF OHLC, `SPY`, `^IRX`) via `yfinance`; FRED (`DGS3MO`) via `pandas_datareader`; **Kenneth French Data Library** (long-short factors `F-F_Research_Data_5_Factors_2x3_daily` + `F-F_Momentum_Factor_daily`) via `pandas_datareader`.
 
----
+## References
 
-## Limitations
-
-- The investable ETF universe is intentionally small; five ETFs limit cross-sectional breadth.
-- Some cost proxies based on OHLC data are noisy and may overstate trading frictions for liquid ETFs.
-- The current positive result is strongest on drawdown-adjusted metrics, not on robust mean-return dominance.
-- Static spanning explains much of the realized strategy behaviour.
-- Multiple-testing controls do not support a strong standalone alpha claim.
-- Results can vary slightly with data-vintage updates from Yahoo Finance / FRED.
-
----
-
-## Not investment advice
-
-This repository is a research project and does not constitute investment advice or a production trading system.
+* Arnott, R., Clements, A., Kalesnik, V., & Linnainmaa, J. (2023). *Factor Momentum.* Review of Financial Studies.
+* Gupta, T., & Kelly, B. (2019). *Factor Momentum Everywhere.* Journal of Portfolio Management.
+* Ehsani, S., & Linnainmaa, J. (2022). *Factor Momentum and the Momentum Factor.* Journal of Finance.
+* Politis, D. N., & Romano, J. P. (1994). *The Stationary Bootstrap.* JASA.
+* Politis, D. N., & White, H. (2004). *Automatic Block-Length Selection for the Dependent Bootstrap.* Econometric Reviews.
+* Glosten, L., Jagannathan, R., & Runkle, D. (1993). *On the Relation between the Expected Value and the Volatility of the Nominal Excess Return on Stocks (GJR-GARCH).* Journal of Finance.
+* Corwin, S. A., & Schultz, P. (2012). *A Simple Way to Estimate Bid-Ask Spreads from Daily High and Low Prices.* Journal of Finance.
+* Abdi, F., & Ranaldo, A. (2017). *A Simple Estimation of Bid-Ask Spreads from Daily Close, High, and Low Prices.* Review of Financial Studies.
+* Barroso, P., & Santa-Clara, P. (2015). *Momentum Has Its Moments.* Journal of Financial Economics.
+* Ledoit, O., & Wolf, M. (2008). *Robust Performance Hypothesis Testing with the Sharpe Ratio.* Journal of Empirical Finance.
+* Bailey, D. H., & López de Prado, M. (2014). *The Deflated Sharpe Ratio.* Journal of Portfolio Management.
+* White, H. (2000). *A Reality Check for Data Snooping.* Econometrica.
+* Hansen, P. R. (2005). *A Test for Superior Predictive Ability.* Journal of Business & Economic Statistics.

@@ -6,6 +6,5 @@ yfinance>=0.2.40
 pandas_datareader>=0.10
 arch>=6.3
 statsmodels>=0.14
-tables>=3.8
+tables>=3.8           # only needed for DATA_SOURCE="hdf" (pd.read_hdf)
 jupyter
-ipykernel
